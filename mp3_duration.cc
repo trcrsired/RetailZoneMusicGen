@@ -57,7 +57,7 @@ struct mci_close_wrapper
 duration_result get_mp3_duration(char const *filename) noexcept
 {
 	::std::uint_least32_t deviceid{};
-	if constexpr(::fast_io::win32_family::native!=::fast_io::win32_family::ansi_9x)
+	if constexpr(::fast_io::win32_family::native==::fast_io::win32_family::ansi_9x)
 	{
 		MCI_OPEN_PARMSA params{.lpstrDeviceType=reinterpret_cast<char const*>(u8"mpegaudio"),
 		.lpstrElementName=reinterpret_cast<char const*>(filename)};
