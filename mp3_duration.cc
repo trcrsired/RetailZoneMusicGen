@@ -116,12 +116,11 @@ duration_result get_mp3_duration(void const* firstptr, void const* lastptr) noex
 		return {0,true};
 	}
 	::std::uint_least32_t sz{mp3_safe_size(hd.size)};
-//	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz);
+	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz);
 	start+=10;
 //	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz);
 //	start+=sz;
 //	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz," ",last-first," ",last-start);
-	auto end_ptr{start+sz};
 	for(;start<last;)
 	{
 		PROTECTED_ADVANCE(10)
@@ -139,14 +138,9 @@ duration_result get_mp3_duration(void const* firstptr, void const* lastptr) noex
 		PROTECTED_ADVANCE(framesize);
 		if(memcmp(tgf.id,u8"TLEN",4)==0)
 		{
-			print(fast_io::out(),"Find Tlen\n");
+			println(fast_io::out(),"Find Tlen: ",framesize);
 		}
 		else if(memcmp(tgf.id,u8"\xFF\xFB",2)==0)
-		{
-			print(fast_io::out(),"Find Data frame\n");
-		}
-		#if 0
-		else if(memcmp(tgf.id,u8"\0\0\0\0",4)==0)
 		{
 			frame_header h;
 			memcpy(std::addressof(h),start,sizeof(4));
@@ -154,8 +148,9 @@ duration_result get_mp3_duration(void const* firstptr, void const* lastptr) noex
 			auto bitrate_index{h.bitrate_index};
 			auto sampling_frequency{h.sampling_frequency};
 			println(fast_io::out(),"bitrate_index:",bitrate_index,"\tsampling_frequency:",sampling_frequency);
+			
+			break;
 		}
-		#endif
 		start+=framesize;
 
 //		return {0,true};
