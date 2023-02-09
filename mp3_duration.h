@@ -8,4 +8,4 @@ struct duration_result
 	bool invalid{};
 };
 
-duration_result get_mp3_duration(char const*) noexcept;
+duration_result get_mp3_duration(void const*,void const*) noexcept;

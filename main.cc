@@ -9,7 +9,8 @@ int main(int argc,char** argv)
 		perr(fast_io::mnp::os_c_str(*argv)," <path>\n");
 		return 1;
 	}
-	auto v{get_mp3_duration(argv[1])};
-
-	println(fast_io::mnp::os_c_str(argv[1])," duration:",v.duration);
+	fast_io::native_file_loader loader(fast_io::mnp::os_c_str(argv[1]));
+	auto v{get_mp3_duration(loader.data(),loader.data()+loader.size())};
+	println(fast_io::out(),fast_io::mnp::os_c_str(argv[1])," duration:",v.duration
+	," invalid:",v.invalid);
 }

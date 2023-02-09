@@ -1,87 +1,155 @@
-#include "mp3_duration.h"
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+﻿#include "mp3_duration.h"
 #include <cstdlib>
 #include <cstring>
-#include <mciapi.h>
 #include <memory>
-#include <source_location>
+#include <utility>
 
-namespace
-{
+#if 0
 
-inline auto mcisendcommanda_impl(::std::uint_least32_t IDDevice,::std::uint_least32_t uMsg,::std::uintptr_t fdwCommand,::std::uintptr_t dwParam)
+struct
+#if __has_cpp_attribute(__gnu__::__may_alias__)
+[[__gnu__::__may_alias__]]
+#endif
+mp3_header
 {
-	return mciSendCommandA(IDDevice,uMsg,fdwCommand,dwParam);
-}
-
-inline auto mcisendcommandw_impl(::std::uint_least32_t IDDevice,::std::uint_least32_t uMsg,::std::uintptr_t fdwCommand,::std::uintptr_t dwParam)
-{
-	return mciSendCommandW(IDDevice,uMsg,fdwCommand,dwParam);
-}
-
-template<::fast_io::win32_family family>
-inline auto mcisendcommand(::std::uint_least32_t IDDevice,::std::uint_least32_t uMsg,::std::uintptr_t fdwCommand,void* dwParam) noexcept
-{
-	if constexpr(family==::fast_io::win32_family::ansi_9x)
+	char8_t syncword[3];//must be ID3
+	::std::uint_least8_t version;
+	::std::uint_least8_t layer;
+	struct : ::std::uint_least8_t
 	{
-		return ::fast_io::noexcept_call(mcisendcommanda_impl,IDDevice,uMsg,fdwCommand,reinterpret_cast<::std::uintptr_t>(dwParam));
-	}
-	else
+		version:2;
+		layer:4;
+		error_protection:2;
+	}vle;
+	::std::uint_least8_t bitrate;
+	struct : ::std::uint_least8_t
 	{
-		return ::fast_io::noexcept_call(mcisendcommandw_impl,IDDevice,uMsg,fdwCommand,reinterpret_cast<::std::uintptr_t>(dwParam));
-	}
-}
+		frequency:4;
+		padding:2;
+		privbit:2;
+	}fpp;
+};
+#endif
 
-template<::fast_io::win32_family family>
-struct mci_close_wrapper
+
+struct
+#if __has_cpp_attribute(__gnu__::__may_alias__)
+[[__gnu__::__may_alias__]]
+#endif
+#if __has_cpp_attribute(__gnu__::__packed__)
+[[__gnu__::__packed__]]
+#endif
+id3_header
 {
-	::std::uint_least32_t IDDevice{};
-	explicit mci_close_wrapper(::std::uint_least32_t dv) noexcept:IDDevice(dv)
-	{
-
-	}
-	mci_close_wrapper& operator=(mci_close_wrapper const&)=delete;
-	mci_close_wrapper(mci_close_wrapper const&)=delete;
-	~mci_close_wrapper()
-	{
-		mcisendcommand<family>(IDDevice,MCI_CLOSE,0,nullptr);
-	}
+char header[3]; /*必须为“ID3”否则认为标签不存在*/
+::std::uint_least8_t ver; /*版本号ID3V2.3 就记录3*/
+::std::uint_least8_t revision; /*副版本号此版本记录为0*/
+::std::uint_least8_t flag; /*标志字节，只使用高三位，其它位为0 */
+::std::uint_least32_t size; /*标签大小*/
 };
 
-
-}
-
-#define TRY_DURATION_RESULT(x) if(x) {return {0,true};}
-
-duration_result get_mp3_duration(char const *filename) noexcept
+struct
+#if __has_cpp_attribute(__gnu__::__may_alias__)
+[[__gnu__::__may_alias__]]
+#endif
+#if __has_cpp_attribute(__gnu__::__packed__)
+[[__gnu__::__packed__]]
+#endif
+frame_header
 {
-	::std::uint_least32_t deviceid{};
-	if constexpr(::fast_io::win32_family::native==::fast_io::win32_family::ansi_9x)
+::std::uint_least32_t sync:11; //同步信息
+::std::uint_least32_t version:2; //版本
+::std::uint_least32_t layer: 2; //层
+::std::uint_least32_t errorprotection:1; // CRC校验
+::std::uint_least32_t bitrate_index:4; //位率
+::std::uint_least32_t sampling_frequency:2; //采样频率
+::std::uint_least32_t padding:1; //帧长调节
+::std::uint_least32_t privatebit:1; //保留字
+::std::uint_least32_t mode:2; //声道模式
+::std::uint_least32_t modeextension:2; //扩充模式
+::std::uint_least32_t copyright:1; // 版权
+::std::uint_least32_t original:1; //原版标志
+::std::uint_least32_t emphasis:2; //强调模式
+};
+
+struct
+#if __has_cpp_attribute(__gnu__::__may_alias__)
+[[__gnu__::__may_alias__]]
+#endif
+#if __has_cpp_attribute(__gnu__::__packed__)
+[[__gnu__::__packed__]]
+#endif
+tagged_frame
+{
+char id[4]; /*标识帧，说明其内容，例如作者/标题等*/
+::std::uint_least32_t size; /*帧内容的大小，不包括帧头，不得小于1*/
+::std::uint_least8_t flags[2]; /*标志帧，只定义了6 位*/
+};
+
+inline constexpr ::std::uint_least32_t mp3_safe_size(::std::uint_least32_t sz) noexcept
+{
+	if constexpr(::std::endian::native==::std::endian::big)
 	{
-		MCI_OPEN_PARMSA params{.lpstrDeviceType=reinterpret_cast<char const*>(u8"mpegaudio"),
-		.lpstrElementName=reinterpret_cast<char const*>(filename)};
-		TRY_DURATION_RESULT(mcisendcommand<::fast_io::win32_family::ansi_9x>(0,MCI_OPEN,MCI_OPEN_ELEMENT,std::addressof(params)));
-		deviceid=params.wDeviceID;
+		return ((sz)&UINT32_C(0x0F))+(((sz>>8)&UINT32_C(0x0F))<<7)
+			+(((sz>>16)&UINT32_C(0x0F))<<14)+
+			(((sz>>24)&UINT32_C(0x0F))<<21);
 	}
 	else
 	{
-		MCI_OPEN_PARMSW params{.lpstrDeviceType=reinterpret_cast<wchar_t const*>(u"mpegaudio")};
-		//println(fast_io::out(),std::source_location::current());
-		TRY_DURATION_RESULT(::fast_io::win32_api_common(::fast_io::mnp::os_c_str(filename),[&](char16_t const* u16filename)
-		{
-			params.lpstrElementName=reinterpret_cast<wchar_t const*>(u16filename);
-			//println(fast_io::out(),std::source_location::current(),"\t",std::addressof(params));
-			//println(fast_io::out(),std::source_location::current(),"\t",std::addressof(params));
-			auto ret = mcisendcommand<::fast_io::win32_family::wide_nt>(0,MCI_OPEN,MCI_OPEN_ELEMENT,std::addressof(params));
-			//println(fast_io::out(),std::source_location::current());
-			return ret;
-		}));
-//		println(fast_io::out(),std::source_location::current());
-		deviceid=params.wDeviceID;
+		return ((sz>>24)&UINT32_C(0x0F))+(((sz>>16)&UINT32_C(0x0F))<<7)
+			+(((sz>>8)&UINT32_C(0x0F))<<14)+
+			(((sz)&UINT32_C(0x0F))<<21);
 	}
-	mci_close_wrapper<::fast_io::win32_family::native> clwrap(deviceid);
-	MCI_STATUS_PARMS statusparam{.dwItem=MCI_STATUS_LENGTH};
-	TRY_DURATION_RESULT(mcisendcommand<::fast_io::win32_family::native>(deviceid,MCI_STATUS,MCI_STATUS_ITEM,std::addressof(statusparam)));
-	return {statusparam.dwReturn};
+}
+
+duration_result get_mp3_duration(void const* firstptr, void const* lastptr) noexcept
+{
+	char const* first{reinterpret_cast<char const*>(firstptr)};
+	char const* last{reinterpret_cast<char const*>(lastptr)};
+	char const* start{first};
+	#define PROTECTED_ADVANCE(diff) if(static_cast<std::size_t>(last-start)<static_cast<std::make_unsigned_t<decltype(diff)>>(diff)) {return {0,true};}
+
+	PROTECTED_ADVANCE(10);
+	id3_header const& hd{*reinterpret_cast<id3_header const*>(start)};
+	if(memcmp(hd.header,u8"ID3",3)!=0)
+	{
+		return {0,true};
+	}
+	::std::uint_least32_t sz{mp3_safe_size(hd.size)};
+//	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz);
+	start+=10;
+//	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz);
+//	start+=sz;
+//	println(fast_io::out(),"Version:",hd.ver,"\tmp3_safe_size:",sz," ",last-first," ",last-start);
+	auto end_ptr{start+sz};
+	for(;start<last;)
+	{
+		PROTECTED_ADVANCE(10)
+		tagged_frame const& tgf{*reinterpret_cast<tagged_frame const*>(start)};
+//		memcpy(std::addressof(tgf),start,4);
+//		start+pos;
+
+//		println(fast_io::mnp::addrvw(h));
+		::std::uint_least32_t framesize{tgf.size};
+		if constexpr(std::endian::native!=::std::endian::big)
+		{
+			framesize=::std::byteswap(framesize);
+		}
+		start+=10;
+		PROTECTED_ADVANCE(framesize);
+		if(memcmp(tgf.id,u8"\0\0\0\0",4)==0)
+		{
+			frame_header h;
+			memcpy(std::addressof(h),start,sizeof(4));
+
+			auto bitrate_index{h.bitrate_index};
+			auto sampling_frequency{h.sampling_frequency};
+			println(fast_io::out(),"bitrate_index:",bitrate_index,"\tsampling_frequency:",sampling_frequency);
+		}
+
+		start+=framesize;
+
+//		return {0,true};
+	}
+	return {0,true};
 }
